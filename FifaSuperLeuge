@@ -1,0 +1,368 @@
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+
+local Window = Fluent:CreateWindow({
+    Title = "TrakyalıHasan",
+    SubTitle = "Fox & Witch Edition",
+    TabWidth = 180,
+    Size = UDim2.fromOffset(600, 480),
+    Acrylic = true,
+    Theme = "Amethyst",
+    MinimizeKey = Enum.KeyCode.RightControl
+})
+
+local Tabs = {
+    FIFA   = Window:AddTab({ Title = "⚽ FIFA",     Icon = "star"     }),
+    Move   = Window:AddTab({ Title = "🏃 Movement", Icon = "zap"      }),
+    Visual = Window:AddTab({ Title = "👁️ Visual",   Icon = "eye"      }),
+    Misc   = Window:AddTab({ Title = "🔧 Misc",     Icon = "tool"     }),
+    Config = Window:AddTab({ Title = "⚙️ Config",   Icon = "settings" }),
+}
+
+local Player        = game.Players.LocalPlayer
+local RunService    = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local HttpService   = game:GetService("HttpService")
+local Lighting      = game:GetService("Lighting")
+local Workspace     = game:GetService("Workspace")
+
+getgenv().WMCfg = getgenv().WMCfg or {
+    InfiniteStamina = false,
+    SpeedEnabled    = false,
+    SpeedValue      = 25,
+    JumpEnabled     = false,
+    JumpValue       = 50,
+    NoClip          = false,
+    Flight          = false,
+    FlightSpeed     = 50,
+    InfiniteJump    = false,
+    ESP             = false,
+    Fullbright      = false,
+    FOVChanger      = false,
+    FOVValue        = 70,
+    AntiAFK         = false,
+    SelectedKey     = Enum.KeyCode.RightControl,
+}
+local cfg = getgenv().WMCfg
+local ESPObjects = {}
+
+local function Notify(t, c, d)
+    Fluent:Notify({ Title = t, Content = c, Duration = d or 3 })
+end
+
+local function GetHumanoid()
+    local c = Player.Character
+    return c and c:FindFirstChildOfClass("Humanoid")
+end
+
+local function GetRoot()
+    local c = Player.Character
+    return c and (c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Torso"))
+end
+
+-- Infinite Stamina
+task.spawn(function()
+    while task.wait(0.08) do
+        if cfg.InfiniteStamina then
+            pcall(function()
+                local S = require(Player.PlayerScripts.Client.Controllers.Stamina)
+                S.Consume = function() return true end
+                if S.Amount then S.Amount:set(100) end
+            end)
+        end
+    end
+end)
+
+-- Speed
+RunService.Heartbeat:Connect(function()
+    if cfg.SpeedEnabled then
+        local h = GetHumanoid()
+        if h then h.WalkSpeed = cfg.SpeedValue end
+    end
+end)
+
+-- Jump Power
+RunService.Heartbeat:Connect(function()
+    if cfg.JumpEnabled then
+        local h = GetHumanoid()
+        if h then h.JumpPower = cfg.JumpValue end
+    end
+end)
+
+-- NoClip
+RunService.Stepped:Connect(function()
+    if cfg.NoClip then
+        local c = Player.Character
+        if c then
+            for _, p in pairs(c:GetDescendants()) do
+                if p:IsA("BasePart") then p.CanCollide = false end
+            end
+        end
+    end
+end)
+
+-- Infinite Jump
+UserInputService.JumpRequest:Connect(function()
+    if cfg.InfiniteJump then
+        local h = GetHumanoid()
+        if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end
+end)
+
+-- Flight
+local flyConn
+local function StartFlight()
+    local root = GetRoot()
+    if not root then return end
+    local bg = Instance.new("BodyGyro", root)
+    bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+    bg.P = 9e4
+    local bv = Instance.new("BodyVelocity", root)
+    bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    bv.Velocity = Vector3.zero
+    flyConn = RunService.Heartbeat:Connect(function()
+        if not cfg.Flight then
+            bg:Destroy(); bv:Destroy()
+            flyConn:Disconnect(); return
+        end
+        local cam = Workspace.CurrentCamera
+        local move = Vector3.zero
+        local sp = cfg.FlightSpeed
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += cam.CFrame.LookVector  * sp end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= cam.CFrame.LookVector  * sp end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= cam.CFrame.RightVector * sp end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += cam.CFrame.RightVector * sp end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space)     then move += Vector3.new(0, sp, 0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then move -= Vector3.new(0, sp, 0) end
+        bv.Velocity = move
+        bg.CFrame   = cam.CFrame
+    end)
+end
+
+-- ESP
+local function CreateESP(player)
+    if player == Player or ESPObjects[player] then return end
+    local h = Instance.new("Highlight")
+    h.Adornee          = player.Character
+    h.FillColor         = Color3.fromRGB(255, 0, 150)
+    h.OutlineColor      = Color3.fromRGB(255, 255, 255)
+    h.FillTransparency  = 0.5
+    h.Parent            = player.Character
+    local bb = Instance.new("BillboardGui")
+    bb.Adornee      = player.Character:FindFirstChild("Head")
+    bb.Size         = UDim2.new(0, 100, 0, 30)
+    bb.StudsOffset  = Vector3.new(0, 3, 0)
+    bb.AlwaysOnTop  = true
+    bb.Parent       = player.Character
+    local lbl = Instance.new("TextLabel", bb)
+    lbl.Size                 = UDim2.new(1, 0, 1, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text                 = player.Name
+    lbl.TextColor3           = Color3.new(1, 1, 1)
+    lbl.TextStrokeTransparency = 0
+    lbl.TextScaled           = true
+    lbl.Font                 = Enum.Font.GothamBold
+    ESPObjects[player] = { h, bb }
+end
+
+local function RemoveESP(player)
+    if ESPObjects[player] then
+        for _, o in pairs(ESPObjects[player]) do o:Destroy() end
+        ESPObjects[player] = nil
+    end
+end
+
+local function UpdateESP()
+    if cfg.ESP then
+        for _, p in pairs(game.Players:GetPlayers()) do
+            if p.Character and p ~= Player then CreateESP(p) end
+        end
+    else
+        for p in pairs(ESPObjects) do RemoveESP(p) end
+    end
+end
+
+game.Players.PlayerAdded:Connect(function(p)
+    p.CharacterAdded:Connect(function()
+        if cfg.ESP then task.wait(0.5); CreateESP(p) end
+    end)
+end)
+game.Players.PlayerRemoving:Connect(RemoveESP)
+
+-- Fullbright
+local function ToggleFullbright(on)
+    Lighting.Brightness      = on and 2  or 1
+    Lighting.ClockTime       = on and 14 or 12
+    Lighting.GlobalShadows   = not on
+    Lighting.OutdoorAmbient  = on and Color3.fromRGB(128,128,128) or Color3.fromRGB(70,70,70)
+end
+
+RunService.RenderStepped:Connect(function()
+    if cfg.FOVChanger then
+        Workspace.CurrentCamera.FieldOfView = cfg.FOVValue
+    end
+end)
+
+-- Anti-AFK
+task.spawn(function()
+    while task.wait(120) do
+        if cfg.AntiAFK then
+            pcall(function()
+                local VU = game:GetService("VirtualUser")
+                VU:CaptureController()
+                VU:ClickButton2(Vector2.zero)
+            end)
+        end
+    end
+end)
+
+-- Config Save/Load
+local function SaveConfig()
+    pcall(function()
+        writefile("WaweMium_Config.json", HttpService:JSONEncode(cfg))
+        Notify("Config", "Kaydedildi", 2)
+    end)
+end
+
+local function LoadConfig()
+    pcall(function()
+        if isfile("WaweMium_Config.json") then
+            for k, v in pairs(HttpService:JSONDecode(readfile("WaweMium_Config.json"))) do
+                cfg[k] = v
+            end
+            Notify("Config", "Yüklendi", 2)
+        end
+    end)
+end
+
+-- ══ FIFA TAB ══
+Tabs.FIFA:AddToggle("StaminaToggle", {
+    Title = "⚡ Infinite Stamina",
+    Default = cfg.InfiniteStamina,
+    Callback = function(v) cfg.InfiniteStamina = v end
+})
+
+-- ══ MOVEMENT TAB ══
+Tabs.Move:AddToggle("SpeedToggle", {
+    Title = "🏃 Speed Hack",
+    Default = cfg.SpeedEnabled,
+    Callback = function(v)
+        cfg.SpeedEnabled = v
+        if not v then local h = GetHumanoid(); if h then h.WalkSpeed = 16 end end
+    end
+})
+Tabs.Move:AddSlider("SpeedVal", {
+    Title = "Speed", Min = 16, Max = 200, Default = cfg.SpeedValue, Rounding = 0,
+    Callback = function(v) cfg.SpeedValue = v end
+})
+Tabs.Move:AddToggle("JumpToggle", {
+    Title = "🦘 Jump Power",
+    Default = cfg.JumpEnabled,
+    Callback = function(v) cfg.JumpEnabled = v end
+})
+Tabs.Move:AddSlider("JumpVal", {
+    Title = "Jump", Min = 50, Max = 300, Default = cfg.JumpValue, Rounding = 0,
+    Callback = function(v) cfg.JumpValue = v end
+})
+Tabs.Move:AddToggle("NoClipToggle", {
+    Title = "👻 NoClip",
+    Default = cfg.NoClip,
+    Callback = function(v) cfg.NoClip = v end
+})
+Tabs.Move:AddToggle("FlightToggle", {
+    Title = "✈️ Flight",
+    Default = cfg.Flight,
+    Callback = function(v)
+        cfg.Flight = v
+        if v then StartFlight() end
+    end
+})
+Tabs.Move:AddSlider("FlightSpeedVal", {
+    Title = "Flight Speed", Min = 10, Max = 200, Default = cfg.FlightSpeed, Rounding = 0,
+    Callback = function(v) cfg.FlightSpeed = v end
+})
+Tabs.Move:AddToggle("InfJump", {
+    Title = "🚀 Infinite Jump",
+    Default = cfg.InfiniteJump,
+    Callback = function(v) cfg.InfiniteJump = v end
+})
+
+-- ══ VISUAL TAB ══
+Tabs.Visual:AddToggle("ESPToggle", {
+    Title = "👁️ Player ESP",
+    Default = cfg.ESP,
+    Callback = function(v) cfg.ESP = v; UpdateESP() end
+})
+Tabs.Visual:AddToggle("FullbrightToggle", {
+    Title = "💡 Fullbright",
+    Default = cfg.Fullbright,
+    Callback = function(v) cfg.Fullbright = v; ToggleFullbright(v) end
+})
+Tabs.Visual:AddToggle("FOVToggle", {
+    Title = "📐 FOV Changer",
+    Default = cfg.FOVChanger,
+    Callback = function(v)
+        cfg.FOVChanger = v
+        if not v then Workspace.CurrentCamera.FieldOfView = 70 end
+    end
+})
+Tabs.Visual:AddSlider("FOVVal", {
+    Title = "FOV", Min = 70, Max = 120, Default = cfg.FOVValue, Rounding = 0,
+    Callback = function(v) cfg.FOVValue = v end
+})
+
+-- ══ MISC TAB ══
+Tabs.Misc:AddToggle("AntiAFK", {
+    Title = "⏰ Anti-AFK",
+    Default = cfg.AntiAFK,
+    Callback = function(v) cfg.AntiAFK = v end
+})
+Tabs.Misc:AddButton({
+    Title = "🔄 Respawn",
+    Callback = function()
+        Player.Character:BreakJoints()
+    end
+})
+Tabs.Misc:AddButton({
+    Title = "🗑️ GC Collect",
+    Callback = function()
+        collectgarbage("collect")
+        Notify("Misc", "GC tamamlandı", 2)
+    end
+})
+
+-- ══ CONFIG TAB ══
+Tabs.Config:AddKeybind("MenuKey", {
+    Title = "Menu Tuşu",
+    Mode = "Toggle",
+    Default = "RightControl",
+    ChangedCallback = function(k) cfg.SelectedKey = k end
+})
+Tabs.Config:AddButton({
+    Title = "💾 Kaydet",
+    Callback = SaveConfig
+})
+Tabs.Config:AddButton({
+    Title = "📂 Yükle",
+    Callback = LoadConfig
+})
+Tabs.Config:AddButton({
+    Title = "🔴 Menüyü Kapat",
+    Callback = function()
+        task.wait(0.5)
+        game:GetService("CoreGui"):FindFirstChild("FluentUI"):Destroy()
+    end
+})
+
+UserInputService.InputBegan:Connect(function(input, processed)
+    if not processed and input.KeyCode == cfg.SelectedKey then
+        Window:Minimize()
+    end
+end)
+
+Window:SelectTab(1)
+
+task.delay(1, function()
+    if isfile("WaweMium_Config.json") then LoadConfig() end
+end)
+
+Notify("TrakyalıHasan", "Yüklendi! RightCtrl ile menü aç/kapat.", 5)
